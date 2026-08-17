@@ -17,6 +17,10 @@ check that the package is not set to private. Do not add a registry credential.
 | Tag `v1.4.2` | `:1.4.2`, `:1.4`, `:latest` |
 | Tag `v2.0.0` | `:2.0.0`, `:2.0`, `:latest`, `:2` |
 
+**The bare major alias starts at 1.0.0.** Semver allows anything to change in a 0.x
+release, so `:0` would promise a stability this project does not yet have. `v0.1.0`
+published `:0` before that guard existed; ignore it.
+
 **A push to `main` never moves `:latest`.** `:latest` moves only on a version tag. A person
 running `:latest` in production must never receive an untagged commit, and an auto-updater
 would install one within the hour.

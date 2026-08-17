@@ -253,8 +253,9 @@ def _stream_wav(path: Path, request: Request) -> Response:
     range_header = request.headers.get("range")
 
     if range_header:
-        start, end = _parse_range(range_header, file_size)
-        if start is not None:
+        parsed = _parse_range(range_header, file_size)
+        if parsed is not None:
+            start, end = parsed
             with path.open("rb") as handle:
                 handle.seek(start)
                 body = handle.read(end - start + 1)
@@ -270,20 +271,31 @@ def _stream_wav(path: Path, request: Request) -> Response:
     return Response(content=body, media_type="audio/wav", headers=headers)
 
 
-def _parse_range(range_header: str, file_size: int) -> tuple[int | None, int | None]:
-    """Parse a `Range: bytes=start-end` header. Return (None, None) when it is not valid."""
+def _parse_range(range_header: str, file_size: int) -> tuple[int, int] | None:
+    """Parse a `Range: bytes=start-end` header. Return None when it is not valid.
+
+    The two numbers are returned together, or not at all. An earlier
+    signature returned `tuple[int | None, int | None]`, which says a start
+    can arrive without an end. The code never did that, but a caller that
+    trusted the type had to guard a case that cannot happen, and a caller
+    that read the code guarded nothing. A type that cannot express the
+    invariant makes one of the two wrong.
+
+    An open range, `bytes=0-`, is the common form a browser sends for an
+    `<audio>` element, and it ends at the last byte.
+    """
     units, _, spec = range_header.partition("=")
     if units.strip() != "bytes":
-        return None, None
+        return None
     start_text, _, end_text = spec.partition("-")
     try:
         start = int(start_text) if start_text.strip() else 0
         end = int(end_text) if end_text.strip() else file_size - 1
     except ValueError:
-        return None, None
+        return None
     end = min(end, file_size - 1)
     if start < 0 or start > end:
-        return None, None
+        return None
     return start, end
 
 

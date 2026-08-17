@@ -9,7 +9,6 @@ would have to be undone for that one route instead of stated for the rest.
 from __future__ import annotations
 
 import shutil
-from typing import Optional
 
 from fastapi import APIRouter, Depends
 
@@ -17,7 +16,13 @@ from narratarr import __version__, runner
 from narratarr.api.common import require_key
 from narratarr.config import get_settings
 from narratarr.db import connect
-from narratarr.models import HealthResponse, ModelInfo, ModelsResponse, SecretStatus, SystemStatusResponse
+from narratarr.models import (
+    HealthResponse,
+    ModelInfo,
+    ModelsResponse,
+    SecretStatus,
+    SystemStatusResponse,
+)
 from narratarr.queue import count_queued
 
 router = APIRouter(prefix="/api/v1/system", tags=["system"])

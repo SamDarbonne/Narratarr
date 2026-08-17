@@ -7,7 +7,6 @@ and a temporary sqlite database; nothing here touches `/config`.
 
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 
@@ -16,8 +15,8 @@ import pytest
 # So `import narratarr` resolves when pytest is run from any directory.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from narratarr.config import get_settings  # noqa: E402
 from narratarr import db as db_module  # noqa: E402
+from narratarr.config import get_settings  # noqa: E402
 from narratarr.db import new_id, now  # noqa: E402
 
 TEST_API_KEY = "test-key-0123456789abcdef0123456789abcdef"

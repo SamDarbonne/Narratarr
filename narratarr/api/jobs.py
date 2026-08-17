@@ -200,17 +200,31 @@ async def create_job(request: Request) -> dict:
         upload = form.get("file")
         if upload is None:
             raise ApiError("validation_error", "the multipart body needs a 'file' field", status=422)
+        # Warning: a multipart form may carry a plain text field under the
+        # name "file". Without this check the next line calls .read() on a
+        # string, and a malformed request answers 500 instead of 422.
+        if isinstance(upload, str) or not hasattr(upload, "read"):
+            raise ApiError(
+                "validation_error",
+                "the 'file' field must be an uploaded file, not a text value",
+                status=422,
+            )
         raw_bytes = await upload.read()
-        original_name = upload.filename or "upload.epub"
+        original_name = getattr(upload, "filename", None) or "upload.epub"
         title = _str_or_none(form.get("title"))
         author = _str_or_none(form.get("author"))
         year = _str_or_none(form.get("year"))
         genre = _str_or_none(form.get("genre"))
         language = _str_or_none(form.get("language")) or "en"
-        priority = int(form.get("priority") or 0)
-        allow_duplicate = _str_or_none(form.get("allow_duplicate") or "").lower() in (
+        try:
+            priority = int(str(form.get("priority") or 0))
+        except ValueError:
+            raise ApiError(
+                "validation_error", "priority must be a whole number", status=422
+            ) from None
+        allow_duplicate = (_str_or_none(form.get("allow_duplicate")) or "").lower() in (
             "1", "true", "yes", "on",
-        ) if form.get("allow_duplicate") is not None else False
+        )
     else:
         try:
             body = await request.json()

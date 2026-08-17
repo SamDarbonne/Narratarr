@@ -8,18 +8,14 @@ them imports `narratarr.adapter`.
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Optional
 
-import pytest
-
 from narratarr import db as db_module
 from narratarr import runner
 from narratarr.models import Job
-
 
 # ------------------------------------------------------------------- fakes
 

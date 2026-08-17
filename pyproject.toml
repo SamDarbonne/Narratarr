@@ -77,3 +77,19 @@ markers = [
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+# vendor/ is a one-way copy of another project. Refer to APP-CONTRACT
+# section 3: no worker edits a file under it, so linting it can only
+# produce findings nobody is allowed to act on.
+extend-exclude = ["vendor", "web", ".venv"]
+
+[tool.ruff.lint]
+# The default rule set, plus the import-order rule. This is a v0.1.0
+# baseline, chosen so the gate passes on day one and can be tightened
+# deliberately. A gate that fails on the first run gets switched off, and
+# then it catches nothing.
+select = ["E", "F", "I", "W"]
+ignore = [
+    # The house style writes long, explanatory comment blocks that record a
+    # measured fault. Wrapping them to a column would hurt them.
+    "E501",
+]

@@ -1,0 +1,107 @@
+# Narratarr's CI. Read APP-CONTRACT.md section 11 and house rule 15.
+#
+# This workflow tests and builds. **It never pushes an image.** Publishing
+# is release.yml's job, and it runs this workflow first, so nothing reaches
+# a registry without a green suite.
+
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  # release.yml calls this workflow, so the image push is gated on a green
+  # suite. An image that fails its own tests must never reach a registry:
+  # an auto-updater on somebody's server would install it within the hour.
+  workflow_call:
+
+# A second push to the same branch cancels the run already in progress
+# for it, so CI never queues stale work behind fresh work.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    name: Python lint, type-check, test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          # pyproject.toml pins requires-python = ">=3.12,<3.13". Match it.
+          python-version: "3.12"
+
+      # CPU wheels only, matching the Dockerfile exactly. Refer to
+      # APP-CONTRACT.md section 11.1: the default index serves a
+      # CUDA-enabled torch, which this project never wants, and which
+      # would also slow this job down for no reason on a runner with no
+      # GPU.
+      - name: Install torch (CPU wheels)
+        run: pip install torch==2.6.0 --index-url https://download.pytorch.org/whl/cpu
+
+      # Pinned to match the Dockerfile, for the reason in the
+      # Dockerfile's own comment: the phoneme-parity measurement between
+      # the two Kokoro engines holds inside one shared misaki version.
+      - name: Install kokoro and misaki
+        run: pip install "kokoro==0.9.4" "misaki[en]==0.9.4"
+
+      - name: Install the package, the pipeline extra, and the dev extra
+        run: pip install -e ".[pipeline,dev]"
+
+      - name: Download the spacy model
+        run: python -m spacy download en_core_web_sm
+
+      - name: Lint
+        run: ruff check .
+
+      # WARNING: mypy is not yet in pyproject.toml's "dev" extra. W5
+      # (packaging) asked the overlord to add it there; until it lands,
+      # this step fails with "mypy: command not found", not with a type
+      # error. Refer to the packaging report for the exact ask.
+      - name: Type-check
+        run: mypy narratarr
+
+      - name: Test
+        run: pytest
+
+  frontend:
+    name: Frontend type-check, test, build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: web/package-lock.json
+
+      - run: npm ci
+      - run: npm run test
+      - run: npm run build
+
+  docker:
+    name: Docker build (no push)
+    runs-on: ubuntu-latest
+    needs: [python, frontend]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      # WARNING: no `push: true`, no `tags` pointing at a registry, and
+      # no login step above this one. This job proves the image builds.
+      # It never publishes the image. Refer to the warning at the top of
+      # this file.
+      - name: Build the image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: false
+          load: false

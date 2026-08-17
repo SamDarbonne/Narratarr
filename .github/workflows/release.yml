@@ -1,0 +1,135 @@
+# Build the image and push it to the GitHub container registry.
+#
+# This workflow uses the built-in GITHUB_TOKEN. **It needs no secret.** Do
+# not add a registry credential to make it work; if it cannot push, the
+# package write permission below is the thing to check.
+#
+# The tag scheme, which the maintainer can veto:
+#
+# | Trigger              | Image tags pushed          |
+# |----------------------|----------------------------|
+# | a push to `main`     | `develop`                  |
+# | the tag `v1.4.2`     | `1.4.2`, `1.4`, `latest`   |
+# | the tag `v2.0.0`     | `2.0.0`, `2.0`, `latest`, `2` |
+#
+# A major release also publishes the bare major alias, so a person can pin
+# `:2` and take every later 2.x. That is the servarr habit, and it is what
+# lets an auto-updater follow minor releases without ever crossing a major
+# boundary on its own.
+#
+# **The push is gated on the tests.** The `test` job must pass first. An
+# image that fails its own suite must never reach a registry, because an
+# auto-updater on somebody's server will install it within the hour.
+
+name: Release
+
+on:
+  push:
+    branches: ["main"]
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  test:
+    name: Test before any push
+    uses: ./.github/workflows/ci.yml
+
+  image:
+    name: Build and push the image
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Sign in to the registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Work out the tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          # `latest` is deliberately NOT automatic. It is attached below,
+          # only on a semver tag, so that a push to main can never move
+          # `latest` under a person who is running it in production.
+          flavor: |
+            latest=false
+          tags: |
+            type=ref,event=branch,enable=${{ github.ref == 'refs/heads/main' }},value=develop
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          # Warning: amd64 only, and that is a measured decision, not an
+          # oversight. Refer to docs/releasing.md. The image installs torch
+          # and a spaCy transformer, and its build RUNS a warmup render to
+          # prove the espeak fallback works (APP-CONTRACT 11.2). Under QEMU
+          # emulation that warmup executes real model inference on an
+          # emulated CPU, which is far too slow for a hosted runner.
+          #
+          # To add arm64 later, change this line to
+          #   platforms: linux/amd64,linux/arm64
+          # add `docker/setup-qemu-action@v3` above, and expect a long build.
+          # A native arm64 runner is the better answer.
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+
+      - name: Say what went where
+        run: |
+          echo "### Image published" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "${{ steps.meta.outputs.tags }}" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+  release:
+    name: Create the GitHub release
+    needs: image
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Publish the release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          body: |
+            ## The image
+
+            ```
+            docker pull ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+            ```
+
+            Read `docs/releasing.md` for the tag scheme, and
+            `docs/overview.md` to run it.

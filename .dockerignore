@@ -1,0 +1,48 @@
+# Files the Docker build context never needs. Read APP-CONTRACT.md section
+# 11. Keeping the build context small keeps every build faster, because
+# Docker hashes and sends every file that is not excluded here.
+
+.git/
+.github/
+
+# Runtime state. These are mounted, not baked into the image. Refer to
+# APP-CONTRACT.md section 2.1.
+config/
+output/
+watch/
+*.db
+*.db-wal
+*.db-shm
+
+# Secrets. Never send one to the build context.
+.env
+*.pem
+*.key
+
+# The frontend's own build output and dependency cache. The Dockerfile
+# builds these fresh, inside the frontend stage.
+web/node_modules/
+web/dist/
+web/coverage/
+
+# The Python environment and caches.
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Tests and docs never run inside the image.
+tests/
+docs/
+
+# Editor and OS files.
+.DS_Store
+.vscode/
+.idea/

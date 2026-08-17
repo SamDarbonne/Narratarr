@@ -1,0 +1,73 @@
+# Narratarr's deployment. Read APP-CONTRACT.md section 11.3 before you
+# change this file.
+#
+# This is the STRANGER'S file. `docker compose up` builds the image and
+# starts Narratarr, with sensible relative bind mounts and no reference to
+# any private network. This is the file the documentation points at, and it
+# stays the default.
+#
+# A capped server deployment overrides three things: the
+# container name, the port, and the CPU cap. Refer to the
+# `docker-compose.override.yml.sam-80-example` block documented below this
+# file, or to `~/hosting/narratarr/docker-compose.override.yml` on `.80`
+# itself, which is not part of this repository.
+
+services:
+  narratarr:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      # The state directory: the database, the downloaded models, the
+      # ingested library, and the work directory of each book. Refer to
+      # APP-CONTRACT.md section 2.1.
+      - ./data/config:/config
+      # The finished audiobooks. The folder target writes here by default.
+      - ./data/output:/output
+      # Drop an EPUB here. Narratarr polls it and makes a job. Refer to
+      # APP-CONTRACT.md section 7.
+      - ./data/watch:/watch
+    environment:
+      # Every NARRATARR_* variable and its meaning lives in .env.example.
+      # Copy that file to .env and edit it; compose reads .env next to
+      # this file automatically.
+      NARRATARR_CONFIG_DIR: /config
+      NARRATARR_OUTPUT_DIR: /output
+      NARRATARR_WATCH_DIR: /watch
+    healthcheck:
+      test: ["CMD", "python", "scripts/healthcheck.py"]
+      interval: 30s
+      timeout: 5s
+      start_period: 45s
+      retries: 3
+
+# -----------------------------------------------------------------------
+# A capped server deployment. This block is NOT active in this file. It
+# documents the override an operator keeps on the server, at
+# ~/hosting/narratarr/docker-compose.override.yml, which reads alongside
+# this file when compose is given both:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.override.yml up -d
+#
+# services:
+#   narratarr:
+#     container_name: narratarr
+#     restart: unless-stopped
+#     ports:
+#       - "5164:8000"
+#     # The machine has 4 cores and already runs 53 other containers. An
+#     # uncapped render starves them. Refer to APP-CONTRACT.md section
+#     # 11.3.
+#     cpus: 3
+#     # LAN only. No Cloudflare Tunnel ingress rule exists for this
+#     # service, and none should be added: Narratarr's job queue and its
+#     # review gates hold no auth beyond the one API key, and the API key
+#     # is meant for a LAN of trusted devices, not the public internet.
+#     volumes:
+#       - /srv/narratarr/config:/config
+#       - /srv/narratarr/output:/output
+#       - /srv/narratarr/watch:/watch
+# -----------------------------------------------------------------------

@@ -1,0 +1,79 @@
+[project]
+name = "narratarr"
+version = "0.1.0"
+description = "An ebook to audiobook factory. A servarr-style companion app."
+readme = "README.md"
+license = { text = "GPL-3.0-or-later" }
+requires-python = ">=3.12,<3.13"
+
+# Warning: this list holds the APPLICATION dependencies only. The pipeline
+# dependencies live below, under the "pipeline" extra. The split lets a test
+# run of the API layer skip torch, which is a large download.
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "pydantic>=2.6",
+    "python-multipart>=0.0.9",
+    "httpx>=0.27",
+]
+
+[project.optional-dependencies]
+# The vendored abpipe pipeline. Refer to APP-CONTRACT.md section 3.
+#
+# Warning: install torch from the CPU index. The default wheel pulls the CUDA
+# runtime, which adds several gigabytes for no benefit on this target.
+#   uv pip install torch --index-url https://download.pytorch.org/whl/cpu
+pipeline = [
+    "torch>=2.2",
+    "kokoro>=0.9",
+    # Kokoro's text front end. The "en" extra is required. Plain misaki is not
+    # enough: a render then fails on a missing spacy, deep inside misaki/en.py.
+    #
+    # Warning: this version is pinned exactly, and the pin is load-bearing.
+    # Both Kokoro engines send their text through misaki. The port to the CPU
+    # rests on a measured claim that the two engines give byte-identical
+    # phonemes, and that measurement used one shared install. Two environments
+    # that resolve misaki on their own could drift apart, and a drift changes
+    # how every book is pronounced. Only tools/phoneme_parity.py would see it.
+    # Raise the pin deliberately, then capture the fixtures again.
+    "misaki[en]==0.9.4",
+    # The QC transcriber on Linux. mlx-whisper is Apple silicon only.
+    "faster-whisper>=1.0",
+    "num2words>=0.5",
+    "ebooklib>=0.18",
+    "beautifulsoup4>=4.12",
+    "lxml>=5.0",
+    "soundfile>=0.12",
+    "numpy>=1.26",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.4",
+    "mypy>=1.10",
+]
+
+[project.scripts]
+narratarr = "narratarr.__main__:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["narratarr", "vendor/abpipe/abpipe"]
+# abpipe/data/*.json is the heteronym inventory, and *.npz is the trained
+# classifier. Both are data, not code. This rule makes the wheel carry them.
+# Without the rule the homograph audit finds no inventory and cannot run.
+artifacts = ["vendor/abpipe/abpipe/data/*.json", "vendor/abpipe/abpipe/data/*.npz"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "slow: a test that runs a real external tool, for example ffmpeg",
+    "pipeline: a test that needs the pipeline extra installed",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"

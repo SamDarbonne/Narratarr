@@ -1,0 +1,7 @@
+upstream: the abpipe pipeline, a private repository
+branch:   linux-engines
+commit:   aad42d7d3931ccecf443ddd595222a53a3079ee3
+vendored_at: 20260817T003658Z
+
+rule: one-way. Upstream is canonical. Never edit a file under vendor/abpipe/.
+not vendored: deliver.py, cli.py. Refer to tools/vendor-abpipe.sh.
